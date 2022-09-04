@@ -18,7 +18,6 @@ impl NftContract {
             self.tokens_by_id.insert(&token_id, &token).is_none(),
             "Token with id already exists"
         );
-
         self.token_metadata_by_id.insert(&token_id, &metadata);
 
         self.internal_add_token_to_owner(&token.owner_id, &token_id);

@@ -18,6 +18,7 @@ impl NftContract {
 
 pub(crate) fn refund_deposit(storage_used: u64) {
     let required_cost = env::storage_byte_cost() * Balance::from(storage_used);
+
     assert!(
         env::attached_deposit() >= required_cost,
         "Must attach {} yoctoNEAR to coverage storage",

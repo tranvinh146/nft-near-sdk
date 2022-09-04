@@ -19,7 +19,7 @@ pub struct Token {
     pub owner_id: AccountId,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub title: Option<String>,
@@ -44,13 +44,13 @@ pub struct JsonToken {
     pub metadata: TokenMetadata,
 }
 
-pub trait NftMetadata {
-    fn nft_metadata(&self) -> NFTContractMetadata;
+pub trait NftContractMetadata {
+    fn nft_contract_metadata(&self) -> NFTContractMetadata;
 }
 
 #[near_bindgen]
-impl NftMetadata for NftContract {
-    fn nft_metadata(&self) -> NFTContractMetadata {
+impl NftContractMetadata for NftContract {
+    fn nft_contract_metadata(&self) -> NFTContractMetadata {
         self.metadata.get().unwrap()
     }
 }
