@@ -45,12 +45,12 @@ pub struct JsonToken {
 }
 
 pub trait NftContractMetadata {
-    fn nft_contract_metadata(&self) -> NFTContractMetadata;
+    fn nft_metadata(&self) -> NFTContractMetadata;
 }
 
 #[near_bindgen]
 impl NftContractMetadata for NftContract {
-    fn nft_contract_metadata(&self) -> NFTContractMetadata {
+    fn nft_metadata(&self) -> NFTContractMetadata {
         self.metadata.get().unwrap()
     }
 }

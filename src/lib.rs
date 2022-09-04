@@ -1,16 +1,18 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
-use near_sdk::json_types::Base64VecU8;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, BorshStorageKey, CryptoHash, PanicOnDefault, Promise,
+    env, ext_contract, near_bindgen, serde_json, AccountId, Balance, BorshStorageKey, CryptoHash,
+    Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
 };
-
+mod enumeration;
 mod internal;
 mod metadata;
 mod mint;
 mod nft_core;
 
+pub use crate::enumeration::*;
 use crate::internal::*;
 pub use crate::metadata::*;
 pub use crate::mint::*;
@@ -87,29 +89,11 @@ mod tests {
         builder
     }
 
-    #[test]
-    fn test_initialize_metadata() {
-        let mut context = get_context(false);
-        context.attached_deposit(ONE_NEAR);
-
-        testing_env!(context.build());
-
-        let contract = NftContract::new_default_metadata(alice());
-        let nft_contract_metadata = contract.nft_contract_metadata();
-        assert_eq!(nft_contract_metadata.spec, "nft-1.0.0".to_string());
-        assert_eq!(nft_contract_metadata.name, "NFT For Learning".to_string());
-        assert_eq!(nft_contract_metadata.symbol, "NFL".to_string());
+    fn init_nft_contract() -> NftContract {
+        NftContract::new_default_metadata(alice())
     }
 
-    #[test]
-    fn test_mint_nft() {
-        let mut context = get_context(false);
-        context.attached_deposit(ONE_NEAR);
-
-        testing_env!(context.build());
-
-        let mut contract = NftContract::new_default_metadata(alice());
-
+    fn mint_nft(contract: &mut NftContract, account_id: AccountId, token_id: TokenId) {
         let token_metadata = TokenMetadata {
             title: None,
             description: None,
@@ -125,6 +109,36 @@ mod tests {
             reference_hash: None,
         };
 
-        contract.nft_mint("token#1".to_string(), token_metadata, alice());
+        contract.nft_mint(token_id, token_metadata, account_id);
+    }
+
+    #[test]
+    fn test_initialize_metadata() {
+        let mut context = get_context(false);
+        context.attached_deposit(ONE_NEAR);
+
+        testing_env!(context.build());
+
+        let contract = init_nft_contract();
+
+        let nft_contract_metadata = contract.nft_metadata();
+        assert_eq!(nft_contract_metadata.spec, "nft-1.0.0".to_string());
+        assert_eq!(nft_contract_metadata.name, "NFT For Learning".to_string());
+        assert_eq!(nft_contract_metadata.symbol, "NFL".to_string());
+    }
+
+    #[test]
+    fn test_mint_nft() {
+        let mut context = get_context(false);
+        context.attached_deposit(ONE_NEAR);
+
+        testing_env!(context.build());
+
+        let mut contract = init_nft_contract();
+
+        mint_nft(&mut contract, alice(), "token#1".to_string());
+        let json_token = contract.nft_token("token#1".to_string());
+        assert!(json_token.is_some());
+        assert_eq!(json_token.unwrap().owner_id, alice());
     }
 }
