@@ -39,6 +39,7 @@ impl NftContract {
         sender_id: &AccountId,
         receiver_id: &AccountId,
         token_id: &TokenId,
+        approval_id: Option<u64>,
         memo: Option<String>,
     ) -> Token {
         let token = self
@@ -46,20 +47,41 @@ impl NftContract {
             .get(token_id)
             .expect("Token doesn't exist");
 
-        // assure sender is owner
-        assert_eq!(sender_id, &token.owner_id, "Unauthorized");
+        if sender_id != &token.owner_id {
+            if let Some(given_approval_id) = approval_id {
+                let actual_approval_id = token
+                    .approved_account_ids
+                    .get(sender_id)
+                    .expect("Sender is not approved");
+
+                assert_eq!(
+                    &given_approval_id, actual_approval_id,
+                    "The given approval id is differrent from the actual approval id"
+                );
+            } else {
+                env::panic_str("The approval id must not be empty")
+            }
+        }
+
+        // assure receiver is not owner
+        assert_ne!(
+            &token.owner_id, receiver_id,
+            "NFT owner and receiver should be different"
+        );
 
         // remove NFT from sender
-        self.internal_remove_token_from_owner(sender_id, token_id);
+        self.internal_remove_token_from_owner(&token.owner_id, token_id);
 
         // add NFT to receiver
         self.internal_add_token_to_owner(receiver_id, token_id);
 
         // change owner of token
-        let token = Token {
+        let previous_token = Token {
             owner_id: receiver_id.to_owned(),
+            approved_account_ids: HashMap::default(),
+            next_approval_id: token.next_approval_id,
         };
-        self.tokens_by_id.insert(token_id, &token);
+        self.tokens_by_id.insert(token_id, &previous_token);
 
         if let Some(memo) = memo {
             env::log_str(&format!("Memo: {}", memo))
@@ -84,6 +106,30 @@ pub(crate) fn refund_deposit(storage_used: u64) {
     }
 }
 
+pub(crate) fn refund_approved_account_ids_iter<'a, I>(
+    account_id: AccountId,
+    approved_account_ids: I,
+) -> Promise
+where
+    I: Iterator<Item = &'a AccountId>,
+{
+    let storage_released: u64 = approved_account_ids
+        .map(bytes_for_approved_account_id)
+        .sum();
+    Promise::new(account_id).transfer(Balance::from(storage_released) * env::storage_byte_cost())
+}
+
+pub(crate) fn refund_approved_account_ids(
+    account_id: AccountId,
+    approved_account_ids: &HashMap<AccountId, u64>,
+) -> Promise {
+    refund_approved_account_ids_iter(account_id, approved_account_ids.keys())
+}
+
+pub(crate) fn bytes_for_approved_account_id(account_id: &AccountId) -> u64 {
+    account_id.as_str().len() as u64 + 4 + size_of::<u64>() as u64
+}
+
 pub(crate) fn hash_account_id(account_id: &AccountId) -> CryptoHash {
     let mut hash = CryptoHash::default();
     hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
@@ -94,6 +140,13 @@ pub(crate) fn assert_one_yocto() {
     assert_eq!(
         env::attached_deposit(),
         1,
-        "Requiring attached deposit of exactly 1 yoctoNear"
+        "Requiring attached deposit of EXACTLY 1 yoctoNear"
+    );
+}
+
+pub(crate) fn assert_at_least_one_yocto() {
+    assert!(
+        env::attached_deposit() >= 1,
+        "Requiring attached deposit of AT LEAST 1 yoctoNear"
     );
 }

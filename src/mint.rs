@@ -12,6 +12,8 @@ impl NftContract {
 
         let token = Token {
             owner_id: receiver_id,
+            approved_account_ids: HashMap::default(),
+            next_approval_id: 0,
         };
 
         assert!(

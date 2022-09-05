@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::mem::size_of;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::{Base64VecU8, U128};
@@ -6,12 +9,15 @@ use near_sdk::{
     env, ext_contract, near_bindgen, serde_json, AccountId, Balance, BorshStorageKey, CryptoHash,
     Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
 };
+
+mod approval;
 mod enumeration;
 mod internal;
 mod metadata;
 mod mint;
 mod nft_core;
 
+pub use crate::approval::*;
 pub use crate::enumeration::*;
 use crate::internal::*;
 pub use crate::metadata::*;

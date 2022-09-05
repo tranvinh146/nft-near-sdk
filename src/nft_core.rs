@@ -5,7 +5,13 @@ const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(25_000_000_000_000);
 
 pub trait NftCore {
     // transfer an NFT to a receiver ID
-    fn nft_transfer(&mut self, receiver_id: AccountId, token_id: TokenId, memo: Option<String>);
+    fn nft_transfer(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: TokenId,
+        approval_id: Option<u64>,
+        memo: Option<String>,
+    );
 
     // transfer an NFT to a reveicerId and call a function on receiver's contract
     /// return `true` if the token was transferred from the sender's account
@@ -13,6 +19,7 @@ pub trait NftCore {
         &mut self,
         receiver_id: AccountId,
         token_id: TokenId,
+        approval_id: Option<u64>,
         memo: Option<String>,
         msg: String,
     ) -> PromiseOrValue<bool>;
@@ -40,16 +47,30 @@ trait NftResolver {
         owner_id: AccountId,
         receiver_id: AccountId,
         token_id: TokenId,
+        approved_account_ids: HashMap<AccountId, u64>,
     ) -> bool;
 }
 
 #[near_bindgen]
 impl NftCore for NftContract {
     #[payable]
-    fn nft_transfer(&mut self, receiver_id: AccountId, token_id: TokenId, memo: Option<String>) {
+    fn nft_transfer(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: TokenId,
+        approval_id: Option<u64>,
+        memo: Option<String>,
+    ) {
         assert_one_yocto();
         let sender_id = env::predecessor_account_id();
-        self.internal_transfer(&sender_id, &receiver_id, &token_id, memo);
+
+        let previous_token =
+            self.internal_transfer(&sender_id, &receiver_id, &token_id, approval_id, memo);
+
+        refund_approved_account_ids(
+            previous_token.owner_id,
+            &previous_token.approved_account_ids,
+        );
     }
 
     #[payable]
@@ -57,26 +78,33 @@ impl NftCore for NftContract {
         &mut self,
         receiver_id: AccountId,
         token_id: TokenId,
+        approval_id: Option<u64>,
         memo: Option<String>,
         msg: String,
     ) -> PromiseOrValue<bool> {
         assert_one_yocto();
         let sender_id = env::predecessor_account_id();
 
-        let transferred_token = self.internal_transfer(&sender_id, &receiver_id, &token_id, memo);
+        let previous_token =
+            self.internal_transfer(&sender_id, &receiver_id, &token_id, approval_id, memo);
 
         ext_nft_receiver::ext(receiver_id.clone())
             .with_static_gas(GAS_FOR_NFT_ON_TRANSFER)
             .nft_on_transfer(
                 sender_id,
-                transferred_token.owner_id.clone(),
+                previous_token.owner_id.clone(),
                 token_id.clone(),
                 msg,
             )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
-                    .nft_resolve_transfer(transferred_token.owner_id, receiver_id, token_id),
+                    .nft_resolve_transfer(
+                        previous_token.owner_id,
+                        receiver_id,
+                        token_id,
+                        previous_token.approved_account_ids,
+                    ),
             )
             .into()
     }
@@ -88,6 +116,7 @@ impl NftCore for NftContract {
                 token_id: token_id.clone(),
                 owner_id: t.owner_id,
                 metadata: self.token_metadata_by_id.get(&token_id).unwrap(),
+                approved_account_ids: t.approved_account_ids,
             }),
             None => None,
         }
@@ -102,6 +131,7 @@ impl NftResolver for NftContract {
         owner_id: AccountId,
         receiver_id: AccountId,
         token_id: TokenId,
+        approved_account_ids: HashMap<AccountId, u64>,
     ) -> bool {
         assert_eq!(
             env::promise_results_count(),
@@ -111,6 +141,7 @@ impl NftResolver for NftContract {
         if let PromiseResult::Successful(value) = env::promise_result(0) {
             if let Ok(return_token) = serde_json::from_slice::<bool>(&value) {
                 if !return_token {
+                    refund_approved_account_ids(owner_id, &approved_account_ids);
                     return true;
                 }
             }
@@ -118,10 +149,15 @@ impl NftResolver for NftContract {
 
         let mut token = if let Some(token) = self.tokens_by_id.get(&token_id) {
             if token.owner_id != receiver_id {
+                // This case probably doesn't trigger, because if internal_transfer is successful, receiver_id will own this NFT,
+                // otherwise the code will panic.
+                // refund_approved_account_ids(owner_id, &approved_account_ids);
                 return true;
             }
             token
         } else {
+            // This case doesn't trigger because internal_transfer function has already checked token_id
+            // refund_approved_account_ids(owner_id, &approved_account_ids);
             return true;
         };
 
