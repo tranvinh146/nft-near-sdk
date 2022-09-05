@@ -2,6 +2,13 @@ use crate::*;
 
 pub trait NftApproval {
     fn nft_approve(&mut self, token_id: TokenId, account_id: AccountId, msg: Option<String>);
+
+    fn nft_is_approved(
+        &self,
+        token_id: TokenId,
+        approved_account_id: AccountId,
+        approval_id: Option<u64>,
+    ) -> bool;
 }
 
 #[near_bindgen]
@@ -46,6 +53,28 @@ impl NftApproval for NftContract {
                 approval_id,
                 msg,
             );
+        }
+    }
+
+    fn nft_is_approved(
+        &self,
+        token_id: TokenId,
+        approved_account_id: AccountId,
+        approval_id: Option<u64>,
+    ) -> bool {
+        let token = self
+            .tokens_by_id
+            .get(&token_id)
+            .expect("Token doesn't exist");
+
+        if let Some(actual_approval_id) = token.approved_account_ids.get(&approved_account_id) {
+            if let Some(given_approval_id) = approval_id {
+                *actual_approval_id == given_approval_id
+            } else {
+                true
+            }
+        } else {
+            false
         }
     }
 }
