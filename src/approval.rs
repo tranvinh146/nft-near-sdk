@@ -9,6 +9,10 @@ pub trait NftApproval {
         approved_account_id: AccountId,
         approval_id: Option<u64>,
     ) -> bool;
+
+    fn nft_revoke(&mut self, token_id: TokenId, account_id: AccountId);
+
+    fn nft_revoke_all_accounts(&mut self, token_id: TokenId);
 }
 
 #[near_bindgen]
@@ -75,6 +79,48 @@ impl NftApproval for NftContract {
             }
         } else {
             false
+        }
+    }
+
+    #[payable]
+    fn nft_revoke(&mut self, token_id: TokenId, account_id: AccountId) {
+        assert_one_yocto();
+
+        let mut token = self
+            .tokens_by_id
+            .get(&token_id)
+            .expect("Token doesn't exists");
+
+        let predecessor_id = env::predecessor_account_id();
+
+        assert_eq!(predecessor_id, token.owner_id.clone());
+
+        if token.approved_account_ids.remove(&account_id).is_some() {
+            self.tokens_by_id.insert(&token_id, &token);
+            refund_approved_account_ids_iter(predecessor_id, [account_id].iter());
+        }
+    }
+
+    #[payable]
+    fn nft_revoke_all_accounts(&mut self, token_id: TokenId) {
+        assert_one_yocto();
+
+        let mut token = self
+            .tokens_by_id
+            .get(&token_id)
+            .expect("Token doesn't exists");
+
+        let predecessor_id = env::predecessor_account_id();
+
+        assert_eq!(predecessor_id, token.owner_id.clone());
+
+        if !token.approved_account_ids.is_empty() {
+            let approved_account_ids = &token.approved_account_ids.clone();
+
+            token.approved_account_ids.clear();
+            self.tokens_by_id.insert(&token_id, &token);
+
+            refund_approved_account_ids(predecessor_id, approved_account_ids);
         }
     }
 }
