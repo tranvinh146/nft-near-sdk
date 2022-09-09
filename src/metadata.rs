@@ -2,6 +2,12 @@ use crate::*;
 
 pub type TokenId = String;
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Payout {
+    pub payout: HashMap<AccountId, U128>,
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct NFTContractMetadata {
@@ -19,6 +25,7 @@ pub struct Token {
     pub owner_id: AccountId,
     pub approved_account_ids: HashMap<AccountId, u64>,
     pub next_approval_id: u64,
+    pub royalty: HashMap<AccountId, u32>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -45,6 +52,7 @@ pub struct JsonToken {
     pub owner_id: AccountId,
     pub metadata: TokenMetadata,
     pub approved_account_ids: HashMap<AccountId, u64>,
+    pub royalty: HashMap<AccountId, u32>,
 }
 
 pub trait NftContractMetadata {

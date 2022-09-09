@@ -44,10 +44,12 @@ trait NftResolver {
     /// Return `true` if receiver successfully received NFT and `false` if NFT should be returned to original owner
     fn nft_resolve_transfer(
         &mut self,
+        authorized_id: Option<String>,
         owner_id: AccountId,
         receiver_id: AccountId,
         token_id: TokenId,
         approved_account_ids: HashMap<AccountId, u64>,
+        memo: Option<String>,
     ) -> bool;
 }
 
@@ -85,8 +87,18 @@ impl NftCore for NftContract {
         assert_one_yocto();
         let sender_id = env::predecessor_account_id();
 
-        let previous_token =
-            self.internal_transfer(&sender_id, &receiver_id, &token_id, approval_id, memo);
+        let previous_token = self.internal_transfer(
+            &sender_id,
+            &receiver_id,
+            &token_id,
+            approval_id,
+            memo.clone(),
+        );
+
+        let mut authorized_id = None;
+        if sender_id != previous_token.owner_id {
+            authorized_id = Some(sender_id.to_string());
+        }
 
         ext_nft_receiver::ext(receiver_id.clone())
             .with_static_gas(GAS_FOR_NFT_ON_TRANSFER)
@@ -100,10 +112,12 @@ impl NftCore for NftContract {
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                     .nft_resolve_transfer(
+                        authorized_id,
                         previous_token.owner_id,
                         receiver_id,
                         token_id,
                         previous_token.approved_account_ids,
+                        memo,
                     ),
             )
             .into()
@@ -111,12 +125,15 @@ impl NftCore for NftContract {
 
     fn nft_token(&self, token_id: TokenId) -> Option<JsonToken> {
         let token = self.tokens_by_id.get(&token_id);
+        let metadata = self.token_metadata_by_id.get(&token_id).unwrap();
+
         match token {
             Some(t) => Some(JsonToken {
-                token_id: token_id.clone(),
+                token_id,
                 owner_id: t.owner_id,
-                metadata: self.token_metadata_by_id.get(&token_id).unwrap(),
+                metadata,
                 approved_account_ids: t.approved_account_ids,
+                royalty: t.royalty,
             }),
             None => None,
         }
@@ -128,10 +145,12 @@ impl NftResolver for NftContract {
     #[private]
     fn nft_resolve_transfer(
         &mut self,
+        authorized_id: Option<String>,
         owner_id: AccountId,
         receiver_id: AccountId,
         token_id: TokenId,
         approved_account_ids: HashMap<AccountId, u64>,
+        memo: Option<String>,
     ) -> bool {
         assert_eq!(
             env::promise_results_count(),
@@ -151,7 +170,7 @@ impl NftResolver for NftContract {
             if token.owner_id != receiver_id {
                 // This case probably doesn't trigger, because if internal_transfer is successful, receiver_id will own this NFT,
                 // otherwise the code will panic.
-                // refund_approved_account_ids(owner_id, &approved_account_ids);
+                refund_approved_account_ids(owner_id, &approved_account_ids);
                 return true;
             }
             token
@@ -164,8 +183,23 @@ impl NftResolver for NftContract {
         self.internal_remove_token_from_owner(&receiver_id, &token_id);
         self.internal_add_token_to_owner(&owner_id, &token_id);
 
-        token.owner_id = owner_id;
+        token.owner_id = owner_id.clone();
+        token.approved_account_ids = approved_account_ids;
         self.tokens_by_id.insert(&token_id, &token);
+
+        let nft_transfer_log = EventLog {
+            standard: NFT_STANDARD_NAME.to_string(),
+            version: NFT_METADATA_SPEC.to_string(),
+            event: EventLogVariant::NftTransfer(vec![NftTransferLog {
+                authorized_id,
+                old_owner_id: receiver_id.to_string(),
+                new_owner_id: owner_id.to_string(),
+                token_ids: vec![token_id],
+                memo,
+            }]),
+        };
+
+        env::log_str(&nft_transfer_log.to_string());
 
         false
     }

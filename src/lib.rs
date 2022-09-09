@@ -12,17 +12,24 @@ use near_sdk::{
 
 mod approval;
 mod enumeration;
+mod events;
 mod internal;
 mod metadata;
 mod mint;
 mod nft_core;
+mod royalty;
 
 pub use crate::approval::*;
 pub use crate::enumeration::*;
+pub use crate::events::*;
 use crate::internal::*;
 pub use crate::metadata::*;
 pub use crate::mint::*;
 pub use crate::nft_core::*;
+pub use crate::royalty::*;
+
+pub const NFT_METADATA_SPEC: &str = "1.0.0";
+pub const NFT_STANDARD_NAME: &str = "nep171";
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -115,7 +122,7 @@ mod tests {
             reference_hash: None,
         };
 
-        contract.nft_mint(token_id, token_metadata, account_id);
+        contract.nft_mint(token_id, token_metadata, account_id, None);
     }
 
     #[test]

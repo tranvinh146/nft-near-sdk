@@ -76,16 +76,37 @@ impl NftContract {
         self.internal_add_token_to_owner(receiver_id, token_id);
 
         // change owner of token
-        let previous_token = Token {
+        let transferred_token = Token {
             owner_id: receiver_id.to_owned(),
             approved_account_ids: HashMap::default(),
             next_approval_id: token.next_approval_id,
+            royalty: token.royalty.clone(),
         };
-        self.tokens_by_id.insert(token_id, &previous_token);
+        self.tokens_by_id.insert(token_id, &transferred_token);
 
-        if let Some(memo) = memo {
+        if let Some(memo) = memo.as_ref() {
             env::log_str(&format!("Memo: {}", memo))
         }
+
+        let mut authorized_id = None;
+
+        if approval_id.is_some() {
+            authorized_id = Some(sender_id.to_string())
+        }
+
+        let nft_transfer_log = EventLog {
+            standard: NFT_STANDARD_NAME.to_string(),
+            version: NFT_METADATA_SPEC.to_string(),
+            event: EventLogVariant::NftTransfer(vec![NftTransferLog {
+                authorized_id,
+                old_owner_id: token.owner_id.to_string(),
+                new_owner_id: receiver_id.to_string(),
+                token_ids: vec![token_id.to_string()],
+                memo,
+            }]),
+        };
+
+        env::log_str(&nft_transfer_log.to_string());
 
         token
     }
@@ -149,4 +170,8 @@ pub(crate) fn assert_at_least_one_yocto() {
         env::attached_deposit() >= 1,
         "Requiring attached deposit of AT LEAST 1 yoctoNear"
     );
+}
+
+pub(crate) fn royalty_to_payout(royalty_percentage: u32, amount_to_pay: Balance) -> U128 {
+    U128(royalty_percentage as u128 * amount_to_pay / 10_000)
 }
